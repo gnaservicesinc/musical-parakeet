@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "YouTube Comments Closed",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Keeps YouTube comments closed and gives the video its space back. Also hides comments below videos.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
