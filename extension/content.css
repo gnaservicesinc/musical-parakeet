@@ -1,0 +1,13 @@
+/* Hide ordinary comments and the preview used by some watch layouts. */
+ytd-comments,
+ytd-comments-entry-point-header-renderer {
+  display: none !important;
+}
+
+/* Prevent a flash while YouTube builds the close control. JavaScript clicks
+   that control to release the space; hiding the wrapper alone cannot do it. */
+ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"],
+ytd-engagement-panel-section-list-renderer#engagement-panel-comments-section {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
