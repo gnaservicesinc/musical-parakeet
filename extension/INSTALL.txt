@@ -6,8 +6,8 @@ YouTube Comments Closed — standalone Chrome extension
 4. Select this folder — the one containing manifest.json.
 5. Reload any YouTube tabs that were already open.
 
-You may now remove the old NoComment extension. This one works on its own.
-It automatically closes the comments panel and hides comments below videos.
+Comments start closed on each video. Click YouTube's comments button or
+Show comments to open them. Hide comments closes inline comments again.
+The next video starts closed. No other comment blocker is required.
 
 Keep this folder where it is: Chrome loads the extension from this location.
-To restore comments, disable this extension and reload YouTube.

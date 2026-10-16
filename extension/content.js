@@ -5,12 +5,81 @@
   const COMMENTS = `${PANEL_TAG}[target-id="engagement-panel-comments-section"], ${PANEL_TAG}#engagement-panel-comments-section`;
   const EXPANDED = "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED";
   const HIDDEN = "ENGAGEMENT_PANEL_VISIBILITY_HIDDEN";
+  const OPEN_ATTRIBUTE = "data-ycc-comments-open";
+  const TOGGLE_ATTRIBUTE = "data-ycc-comments-toggle";
+  const OPEN_CONTROLS = [
+    "ytd-comments-entry-point-header-renderer",
+    "#comments-button",
+    '[aria-controls="comments"]',
+    '[aria-controls="engagement-panel-comments-section"]',
+  ].join(",");
   // Retrying covers a close button rendered before its event handler is ready.
   // Keep attempts bounded so a changed YouTube layout cannot cause a click loop.
   const RETRY_DELAYS = [100, 250, 500, 1000, 2000];
   const attempts = new WeakMap();
   let frame = 0;
   let retryTimer = 0;
+  let commentsOpen = false;
+  let video = videoKey();
+  const toggles = new WeakMap();
+
+  function videoKey() {
+    // Ignore timestamps, comment links, and tracking parameters on the same
+    // video. Hydration and visibility events must not undo an explicit click.
+    const url = new URL(location.href);
+    return url.pathname === "/watch" ? `/watch?v=${url.searchParams.get("v") || ""}` : url.pathname;
+  }
+
+  function syncVideo() {
+    const next = videoKey();
+    if (next === video) return false;
+    video = next;
+    commentsOpen = false;
+    for (const panel of document.querySelectorAll(COMMENTS)) attempts.delete(panel);
+    return true;
+  }
+
+  function updateDisclosure() {
+    document.documentElement?.toggleAttribute(OPEN_ATTRIBUTE, commentsOpen);
+    for (const comments of document.querySelectorAll("ytd-comments")) {
+      if (comments.closest(PANEL_TAG)) continue;
+      let button = toggles.get(comments);
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute(TOGGLE_ATTRIBUTE, "");
+        if (comments.id) button.setAttribute("aria-controls", comments.id);
+        button.addEventListener("click", event => {
+          if (!event.isTrusted) return;
+          syncVideo();
+          commentsOpen = !commentsOpen;
+          updateDisclosure();
+          scheduleClose();
+        });
+        toggles.set(comments, button);
+      }
+      if (comments.previousElementSibling !== button) comments.before(button);
+      const label = commentsOpen ? "Hide comments" : "Show comments";
+      if (button.textContent !== label) button.textContent = label;
+      button.setAttribute("aria-expanded", String(commentsOpen));
+    }
+    for (const button of document.querySelectorAll(`button[${TOGGLE_ATTRIBUTE}]`)) {
+      if (!button.nextElementSibling?.matches("ytd-comments")) button.remove();
+    }
+  }
+
+  document.addEventListener("click", event => {
+    if (!event.isTrusted) return;
+    // Capture before YouTube's handler opens the panel. Keyboard activation of
+    // native buttons also produces a trusted click; scripted clicks do not.
+    const path = event.composedPath().filter(node => node instanceof Element);
+    if (path.some(node => node.hasAttribute(TOGGLE_ATTRIBUTE))) return;
+    if (!path.some(node => node.matches(OPEN_CONTROLS))) return;
+    syncVideo();
+    commentsOpen = true;
+    clearTimeout(retryTimer);
+    updateDisclosure();
+  }, true);
 
   function closeControl(panel) {
     // Structural IDs work in every language. Never select a page-wide "Close"
@@ -35,6 +104,9 @@
     frame = 0;
     clearTimeout(retryTimer);
     retryTimer = 0;
+    syncVideo();
+    updateDisclosure();
+    if (commentsOpen) return;
     let nextRetry = Infinity;
 
     for (const panel of document.querySelectorAll(COMMENTS)) {
@@ -81,21 +153,23 @@
   function pageReady() {
     // YouTube can reuse the same panel and button for the next video. A new
     // page readiness event starts a fresh bounded cycle after slow hydration.
+    syncVideo();
     for (const panel of document.querySelectorAll(COMMENTS)) attempts.delete(panel);
     scheduleClose();
   }
 
   function hasPanel(node) {
     return node instanceof Element &&
-      (node.matches(PANEL_TAG) || node.querySelector(PANEL_TAG) !== null);
+      (node.matches(`${PANEL_TAG}, ytd-comments, [${TOGGLE_ATTRIBUTE}]`) ||
+       node.querySelector(`${PANEL_TAG}, ytd-comments`) !== null);
   }
 
   const observer = new MutationObserver((records) => {
     let relevant = false;
     for (const record of records) {
       const target = record.target;
-      if (!(target instanceof Element)) continue;
       if (record.type === "attributes") {
+        if (!(target instanceof Element)) continue;
         if (target.matches(PANEL_TAG)) {
           // Handle reopening even if hidden -> expanded happens between frames.
           if ((record.attributeName === "visibility" && record.oldValue === HIDDEN) ||
@@ -117,14 +191,17 @@
             relevant = true;
           }
         }
-      } else if (target.closest(COMMENTS) || Array.from(record.addedNodes).some(hasPanel)) {
+      } else if ((target instanceof Element && target.closest(COMMENTS)) ||
+                 Array.from(record.addedNodes).some(hasPanel) ||
+                 Array.from(record.removedNodes).some(hasPanel)) {
         relevant = true;
       }
     }
     if (relevant) scheduleClose();
   });
 
-  observer.observe(document.documentElement, {
+  // documentElement can still be absent at document_start.
+  observer.observe(document, {
     subtree: true,
     childList: true,
     attributes: true,
@@ -137,6 +214,7 @@
   document.addEventListener("yt-navigate-finish", pageReady);
   document.addEventListener("yt-page-data-updated", pageReady);
   window.addEventListener("pageshow", pageReady);
+  window.addEventListener("popstate", pageReady);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) pageReady();
   });

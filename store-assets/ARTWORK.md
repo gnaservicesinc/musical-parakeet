@@ -25,3 +25,11 @@ Use case: ads-marketing. Asset type: SMALL Chrome Web Store promotional tile. Re
 
 Artwork source images are preserved. Promotional images were resized for the store's required pixel dimensions; no page screenshot was retouched. The original user screenshots were not edited.
 
+
+## Version 1.1.0 icon
+
+The existing navy video-frame and cyan-X mark was redrawn as `icon.svg`, with
+less outer padding and stronger small-size geometry. `npm run icons` renders
+the vector directly at 16, 24, 32, 48, and 128 pixels. These PNGs are declared
+in the extension manifest and toolbar action. Original bitmap sources and
+promotional artwork remain preserved.

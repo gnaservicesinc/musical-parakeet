@@ -21,6 +21,9 @@ export function fixtureHTML(options = {}) {
   button { font: inherit; }
 </style></head><body>
 <ytd-watch-flexy><main id="player">Video player</main><h1>Test video</h1>
+<ytd-comments-entry-point-header-renderer><button id="open-comments">Comments</button></ytd-comments-entry-point-header-renderer>
+<button id="comments-button"><span>Shorts comments</span></button>
+<button id="other-action">Other action</button>
 <div id="inline-host"><ytd-comments id="comments"><p>Ordinary inline comments</p></ytd-comments></div>
 <div id="panel-host"></div></ytd-watch-flexy>
 <script>
@@ -81,6 +84,15 @@ export function fixtureHTML(options = {}) {
   };
 
   document.addEventListener('click', event => {
+    if (event.target.closest('#open-comments, #comments-button')) {
+      for (const panel of host.querySelectorAll('ytd-engagement-panel-section-list-renderer')) {
+        if (panel.getAttribute('target-id') === '${COMMENTS}' || panel.id === '${COMMENTS}') {
+          panel.setAttribute('visibility', '${EXPANDED}');
+        }
+      }
+      window.updateLayout();
+      return;
+    }
     const button = event.target.closest('#visibility-button button, yt-icon-button#close-button button');
     const panel = button?.closest('ytd-engagement-panel-section-list-renderer');
     if (!panel) return;
@@ -115,7 +127,9 @@ export async function openFixture(context, t, options = {}, route = '/watch') {
     contentType: 'text/html',
     body: fixtureHTML(options),
   }));
-  await page.goto(`https://www.youtube.com${route}?fixture=${randomUUID()}`, { waitUntil: 'load' });
+  const url = new URL(route, 'https://www.youtube.com');
+  url.searchParams.set('fixture', randomUUID());
+  await page.goto(url.href, { waitUntil: 'load' });
   await page.waitForFunction(() => window.fixtureReady === true);
   t.after(async () => {
     await page.close();

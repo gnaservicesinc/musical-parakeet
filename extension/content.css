@@ -1,13 +1,28 @@
-/* Hide ordinary comments and the preview used by some watch layouts. */
-ytd-comments,
-ytd-comments-entry-point-header-renderer {
+/* Native comment entry points stay available. A deliberate click reveals both
+   inline comments and engagement panels until the next video. */
+:root:not([data-ycc-comments-open]) ytd-comments {
   display: none !important;
 }
 
-/* Prevent a flash while YouTube builds the close control. JavaScript clicks
-   that control to release the space; hiding the wrapper alone cannot do it. */
-ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"],
-ytd-engagement-panel-section-list-renderer#engagement-panel-comments-section {
+:root:not([data-ycc-comments-open]) ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"],
+:root:not([data-ycc-comments-open]) ytd-engagement-panel-section-list-renderer#engagement-panel-comments-section {
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+button[data-ycc-comments-toggle] {
+  display: block;
+  margin: 16px 0;
+  padding: 10px 16px;
+  border: 1px solid var(--yt-spec-10-percent-layer, #777);
+  border-radius: 20px;
+  background: var(--yt-spec-badge-chip-background, #eee);
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  font: 500 14px Roboto, Arial, sans-serif;
+  cursor: pointer;
+}
+
+button[data-ycc-comments-toggle]:focus-visible {
+  outline: 2px solid var(--yt-spec-call-to-action, #065fd4);
+  outline-offset: 3px;
 }

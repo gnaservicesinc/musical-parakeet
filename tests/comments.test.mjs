@@ -72,7 +72,7 @@ test('already hidden panels are never clicked, even after unrelated DOM mutation
   assert.equal(await page.locator('[data-test-key="comments"]').getAttribute('visibility'), HIDDEN);
 });
 
-test('opening a previously hidden comments panel closes it again', async t => {
+test('an automatic reopening without a user click is closed again', async t => {
   const page = await openFixture(context, t, { panels: [{ visibility: HIDDEN }] });
   await page.evaluate(expanded => {
     document.querySelector('[data-test-key="comments"]').setAttribute('visibility', expanded);
@@ -245,4 +245,114 @@ test('native readiness and changed controls recover reused panels after delayed 
     await closed(page);
     await restored(page);
   }
+});
+
+async function staysOpen(page) {
+  await page.waitForTimeout(350);
+  assert.equal(await page.locator('[data-test-key="comments"]').getAttribute('visibility'), EXPANDED);
+  assert.equal(await page.locator('[data-test-key="comments"] ytd-comments').isVisible(), true);
+  assert.equal(await page.locator('[data-test-key="comments"]').evaluate(panel => getComputedStyle(panel).pointerEvents), 'auto');
+}
+
+test('clicking the native comments entry point opens readable comments and preserves them through readiness events', async t => {
+  const page = await openFixture(context, t);
+  await closed(page);
+  assert.equal(await page.locator('ytd-comments-entry-point-header-renderer').isVisible(), true);
+  await page.locator('#open-comments').click();
+  await page.evaluate(() => {
+    for (const event of ['yt-page-data-updated', 'yt-navigate-finish', 'visibilitychange']) document.dispatchEvent(new Event(event));
+    window.dispatchEvent(new PageTransitionEvent('pageshow'));
+    window.addCloseControl(document.querySelector('[data-test-key="comments"]'));
+  });
+  await staysOpen(page);
+  assert.equal(await page.evaluate(() => window.closeCalls.length), 1);
+});
+
+test('keyboard activation and a click on a nested Shorts icon allow comments', async t => {
+  const page = await openFixture(context, t, { panels: [{ visibility: HIDDEN }] }, '/shorts/first');
+  await page.locator('#comments-button').focus();
+  await page.keyboard.press('Enter');
+  await staysOpen(page);
+  await page.locator('[data-test-key="comments"] button').click();
+  await page.locator('#comments-button span').click();
+  await staysOpen(page);
+});
+
+test('programmatic opener clicks and unrelated trusted clicks do not opt in', async t => {
+  const page = await openFixture(context, t, { panels: [{ visibility: HIDDEN }] });
+  await page.locator('#other-action').click();
+  await page.evaluate(() => document.querySelector('#open-comments').click());
+  await closed(page);
+  assert.equal(await page.locator('#inline-host ytd-comments').isVisible(), false);
+});
+
+test('inline comments have a working Show/Hide control without disabling the extension', async t => {
+  const page = await openFixture(context, t, { panels: [] });
+  const toggle = page.getByRole('button', { name: 'Show comments', exact: true });
+  await toggle.click();
+  assert.equal(await page.locator('#inline-host ytd-comments').isVisible(), true);
+  assert.equal(await page.getByRole('button', { name: 'Hide comments', exact: true }).getAttribute('aria-expanded'), 'true');
+  await page.getByRole('button', { name: 'Hide comments', exact: true }).click();
+  assert.equal(await page.locator('#inline-host ytd-comments').isVisible(), false);
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+});
+
+test('new videos reset opt-in even when YouTube reuses the same panel and inline comments', async t => {
+  const page = await openFixture(context, t);
+  await closed(page);
+  await page.locator('#open-comments').click();
+  await staysOpen(page);
+  await page.evaluate(() => {
+    history.pushState({}, '', '/watch?v=next-video');
+    document.dispatchEvent(new Event('yt-navigate-finish'));
+  });
+  await page.waitForFunction(() => window.closeCalls.length === 2);
+  assert.equal(await page.locator('#inline-host ytd-comments').isVisible(), false);
+  assert.equal(await page.getByRole('button', { name: 'Show comments', exact: true }).count(), 1);
+  await restored(page);
+});
+
+test('timestamp changes on the same video keep the user choice, Shorts navigation resets it', async t => {
+  const page = await openFixture(context, t, { panels: [{ visibility: HIDDEN }] }, '/watch?v=same');
+  await page.locator('#open-comments').click();
+  await page.evaluate(() => {
+    history.replaceState({}, '', '/watch?v=same&t=60&lc=comment');
+    document.dispatchEvent(new Event('yt-page-data-updated'));
+  });
+  await staysOpen(page);
+  await page.evaluate(() => {
+    history.pushState({}, '', '/shorts/second');
+    document.dispatchEvent(new Event('yt-navigate-finish'));
+  });
+  await closed(page);
+});
+
+test('opting in cancels pending close retries before a delayed handler hydrates', async t => {
+  const page = await openFixture(context, t, { panels: [{ hydrationDelay: 500 }] });
+  await page.waitForFunction(() => window.closeAttempts.length > 0);
+  await page.locator('#open-comments').click();
+  const count = await page.evaluate(() => window.closeAttempts.length);
+  await page.waitForTimeout(1100);
+  await staysOpen(page);
+  assert.equal(await page.evaluate(() => window.closeAttempts.length), count);
+});
+
+test('lazy, moved and replaced inline comments keep exactly one working disclosure', async t => {
+  const page = await openFixture(context, t, { panels: [] });
+  await page.getByRole('button', { name: 'Show comments', exact: true }).waitFor();
+  await page.evaluate(() => document.querySelector('[data-ycc-comments-toggle]').remove());
+  await page.getByRole('button', { name: 'Show comments', exact: true }).waitFor();
+  await page.evaluate(() => {
+    const comments = document.querySelector('#inline-host ytd-comments');
+    const holder = document.createElement('section');
+    document.body.append(holder);
+    holder.append(comments);
+  });
+  await page.getByRole('button', { name: 'Show comments', exact: true }).click();
+  assert.equal(await page.locator('section > ytd-comments').isVisible(), true);
+  await page.evaluate(() => document.querySelector('section > ytd-comments').remove());
+  await page.waitForFunction(() => document.querySelectorAll('[data-ycc-comments-toggle]').length === 0);
+  await page.evaluate(() => document.querySelector('#inline-host').append(document.createElement('ytd-comments')));
+  await page.getByRole('button', { name: 'Hide comments', exact: true }).click();
+  assert.equal(await page.locator('#inline-host ytd-comments').isVisible(), false);
 });
